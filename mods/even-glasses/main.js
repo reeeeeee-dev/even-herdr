@@ -10,7 +10,7 @@
 // Settings live in <herdr-app home>/even-glasses.json; both sides read it.
 
 import { View, div, svg } from "gpui-kit";
-import { v_flex, h_flex, Scrollbar, InputState, Input } from "gpui-base";
+import { v_flex, h_flex, Scrollbar, InputState, Input, Popup } from "gpui-base";
 import { exec, hc, run, theme, agents, props, closeOverlay, notify, appHome, readTextFile, writeTextFile, knownAgents, checking, layout } from "herdr";
 
 const MOD = "mods/even-glasses";
@@ -93,6 +93,7 @@ export default class EvenGlasses extends View {
     this.busy = null; // "Starting…" | "Stopping…" while the bridge changes
     this.error = null;
     this.showCode = false;
+    this.menu = null; // id of the dropdown whose list is open
     this.programs = [];
     this.focused = {};
     if (!this.row) {
@@ -254,6 +255,34 @@ export default class EvenGlasses extends View {
       }));
   }
 
+  closeMenu(cx) {
+    this.menu = null;
+    this.handle.focus();
+    cx.notify();
+  }
+
+  // One of many: the current choice on a button, the rest in a list under it.
+  dropdown(t, id, options, value, onPick) {
+    const open = this.menu === id;
+    const current = options.find(([v]) => v === value)?.[1] ?? value;
+    const trigger = h_flex().id(id).w(200).px(12).py(6).gap(8).items_center().rounded(7).border_1().cursor_pointer()
+      .border_color(open ? t.accent : t.border).bg(t.raised).hover((s) => s.bg(t.hover))
+      .on_click((_e, cx) => { if (open) this.closeMenu(cx); else { this.menu = id; cx.notify(); } })
+      .child(div().flex_1().min_w(0).truncate().text_size(13).text_color(t.foreground).child(current))
+      .child(svg(`${MOD}/chevron-down.svg`).flex_none().size(14).text_color(t.dim));
+    const list = v_flex().id(`${id}-list`).w(200).mt(4).p(4).rounded(8).border_1().border_color(t.border).bg(t.background)
+      .on_mouse_down_out((_e, cx) => this.closeMenu(cx))
+      .children(options.map(([v, label]) => {
+        const on = v === value;
+        return h_flex().id(`${id}-${v || "off"}`).px(8).py(5).gap(8).items_center().rounded(6).cursor_pointer()
+          .bg(on ? t.selected : "#00000000").hover((s) => s.bg(t.hover))
+          .on_click((_e, cx) => { this.closeMenu(cx); if (!on) onPick(v, cx); })
+          .child(div().flex_1().min_w(0).truncate().text_size(13).text_color(on ? t.foreground : t.muted).child(label))
+          .when(on, (el) => el.child(svg(`${MOD}/check.svg`).flex_none().size(13).text_color(t.accent)));
+      }));
+    return Popup.new(`${id}-popup`, trigger).when(open, (el) => el.content(list));
+  }
+
   stepper(t, id, value, onMinus, onPlus) {
     const b = (k, label, f) => div().id(`${id}-${k}`).w(28).h(28).flex().items_center().justify_center().cursor_pointer()
       .text_size(15).text_color(t.muted).hover((s) => s.bg(t.hover).text_color(t.foreground)).on_click(f).child(label);
@@ -334,7 +363,7 @@ export default class EvenGlasses extends View {
       .child(this.setting(t, "Answer from the glasses", "When an agent waits on a yes or no, ask on the glasses: Yes presses Enter in its terminal, No presses Esc.",
         this.toggle(t, "eg-answer", c.answer, (_e, cx) => this.change((n) => { n.answer = !n.answer; }, cx))))
       .child(this.setting(t, "New agent from the glasses", "A prompt sent with no agent selected opens a new tab running this.",
-        this.choice(t, "eg-new", starters, c.new_agent, (v, cx) => this.change((n) => { n.new_agent = v; }, cx))))
+        this.dropdown(t, "eg-new", starters, c.new_agent, (v, cx) => this.change((n) => { n.new_agent = v; }, cx))))
       .child(this.setting(t, "Lines when mounting", "How much of an agent's screen the glasses get when you select it.",
         this.stepper(t, "eg-lines", c.history_lines,
           (_e, cx) => this.change((n) => { n.history_lines = Math.max(10, n.history_lines - 10); }, cx),
@@ -374,9 +403,15 @@ export default class EvenGlasses extends View {
     const t = theme();
     if (this.row) return this.sidebarRow(t);
     return v_flex().id("even-glasses").track_focus(this.handle).w_full().h(640).min_h(0)
+      // Esc closes the top dialog; with a list open it closes the list instead.
+      .when(Boolean(this.menu), (el) => el.on_action("overlay.close", (_e, cx) => {
+        this.closeMenu(cx);
+        cx.stop_propagation();
+      }))
       .on_key_down((e, cx) => {
         if (e.key !== "escape") return;
-        closeOverlay(props().overlay);
+        if (this.menu) this.closeMenu(cx);
+        else closeOverlay(props().overlay);
         cx.stop_propagation();
       })
       .child(h_flex().flex_none().gap(12).px(28).pt(20).pb(14).items_center().border_b(1).border_color(t.border)

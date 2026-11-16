@@ -11,13 +11,14 @@ A settings page and a small bridge that put Herdr's agents on Even Realities G2 
   1. **Status card**: a 9px dot, "Running at `<address>:<port>`" or "Stopped", a second line ("2 agents listed. Glasses are on t3h." / "No glasses connected." / the error in the `blocked` color), and a Start/Stop button.
   2. **Pair**: "Pairing code" with Copy link and Show code (a QR on a white rounded card, hidden until asked for because it holds the token); "Token" showing only its first and last four characters, with New token.
   3. **Connection**: Start with Herdr (switch), Network (Wi-Fi / Tailscale / This Mac only), Port (text field), Name (text field).
-  4. **On the glasses**: List agents under (Claude / Codex), Stream while working (switch), Answer from the glasses (switch), New agent from the glasses (Off or one of the installed agents), Lines when mounting (stepper, 10 to 200 by 10).
+  4. **On the glasses**: List agents under (Claude / Codex), Stream while working (switch), Answer from the glasses (switch), New agent from the glasses (a 200px dropdown: Off or one of the installed agents), Lines when mounting (stepper, 10 to 200 by 10).
   5. **Active agents**: one row per live agent: a status dot in that status's theme color, "space / tab", the program's name, and an "on glasses" badge on the mounted one.
 - **On the glasses** (drawn by the Even app, not by this mod): the session list holds one entry per agent, titled "`<space / tab>` · `<agent>`", agents that need you first (prefixed `!`), then working ones, then the rest.
 
 **How it behaves**
 
 - Clicking the sidebar row, or `cmd-shift-g`, opens the dialog; Esc closes it. Clicking an agent row focuses that agent.
+- The dropdown is a button showing the current choice and a chevron; a click opens the list under it with the current item checked. Picking an item, clicking outside, or Esc closes the list (Esc then leaves the dialog open).
 - Every control saves at once to `even-glasses.json`. Text fields save on Enter or when they lose focus; an invalid port is refused with a toast and the field goes back. Changing the port or network while the bridge runs restarts it.
 - Start runs the bridge in an hc terminal named `even-glasses`, so it keeps running when the window closes; Stop kills and removes it. With Start with Herdr on, the sidebar row starts it when Herdr opens.
 - Agent status maps to what the Even app shows: `working` is busy, `blocked` is awaiting, `done` and `idle` are idle.
@@ -30,11 +31,11 @@ A settings page and a small bridge that put Herdr's agents on Even Realities G2 
 - `mods/even-glasses/main.js`: one `View` with two roles. In a layout block with props `{ "row": true }` it is the sidebar row; opened with `mod.open` it is the dialog (`mod.json`: `{ "place": "none", "overlay": { "kind": "dialog", "width": 720 } }`).
 - Layout: a block `{ "id": "even-glasses", "type": "block", "content": { "mod": "even-glasses", "props": { "row": true } }, "size": { "px": 34 } }` in the sidebar column, just above the footer.
 - `keys.json`: `"cmd-shift-g": "mod.open:even-glasses"` in `global`.
-- `herdr` functions: `exec` (find and run Node), `hc` (`run --bg --no-parent --name even-glasses`, `wait --timeout 1`, `read`, `kill`, `rm`), `fetch` (the bridge's `/api/bridge` on 127.0.0.1), `readTextFile` / `writeTextFile` (the settings file, read-compare-write), `agents`, `knownAgents`, `layout`, `theme`, `notify`, `run` (`mod.open`, `agent.focus`), `props`, `closeOverlay`, `appHome`, `checking`; `cx.write_to_clipboard` for Copy link.
+- `herdr` functions: `exec` (find and run Node), `hc` (`run --bg --no-parent --name even-glasses`, `wait --timeout 1`, `read`, `kill`, `rm`), `fetch` (the bridge's `/api/bridge` on 127.0.0.1), `readTextFile` / `writeTextFile` (the settings file, read-compare-write), `agents`, `knownAgents`, `layout`, `theme`, `notify`, `run` (`mod.open`, `agent.focus`), `props`, `closeOverlay`, `appHome`, `checking`; `cx.write_to_clipboard` for Copy link. The dropdown is a `Popup` from `gpui-base` around its trigger, as in Herdr's own font picker, with `on_mouse_down_out` and an `overlay.close` action handler while it is open.
 - `mods/even-glasses/bridge.mjs`: a dependency-free Node (18+) HTTP server that speaks the API the Even app uses with `even-terminal`: token auth (Bearer or `?token=`), `GET /api/info`, `/api/sessions`, `/api/sessions/:id/history`, `/api/status`, `/api/messages`, `/api/events` (SSE), `/api/update-check`, `/api/metrics`, and `POST /api/prompt`, `/api/interrupt`, `/api/permission-response`, `/api/question-response`; plus `GET /api/bridge` for the dialog. It answers from `hc ls --json`, `hc read --json`, `hc send`, `hc keys`, `hc interrupt` and `herdr-app do tab.new`. Commands: `serve`, `info` (creates the settings, prints them with the pairing URL and QR matrix as JSON), `rotate` (new token).
 - Settings: `<herdr-app home>/even-glasses.json`, mode 600: `autostart`, `port` (3457), `network` (`lan` | `tailscale` | `loopback`), `name`, `provider` (`claude` | `codex`), `token`, `stream`, `answer`, `new_agent`, `history_lines` (40), `poll_ms` (1000).
 - Pairing URL: `http://<address>:<port>?token=<token>&defaultProvider=<provider>&name=<name>`, the form the Even app scans. The QR comes from the encoder `even-terminal` ships (`qrcode-terminal`); the dialog draws it as black and white rectangles, one per run of same-colored cells.
-- Art: `glasses.svg`, a 24px stroke icon.
+- Art: `glasses.svg`, `chevron-down.svg` and `check.svg`, 24px stroke icons.
 
 **Watch out**
 
